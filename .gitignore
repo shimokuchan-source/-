@@ -1,0 +1,25 @@
+# 依存ライブラリ・自動生成フォルダ（巨大なため必ず除外）
+node_modules/
+.venv/
+venv/
+__pycache__/
+dist/
+build/
+.next/
+
+# 機密情報・環境変数（セキュリティ保護）
+.env
+.env.*
+!.env.example
+
+# ログファイル・一時ファイル
+*.log
+*.tmp
+.DS_Store
+
+# 大容量のバイナリ・メディアファイル
+*.zip
+*.tar.gz
+*.mp4
+*.png
+*.jpg

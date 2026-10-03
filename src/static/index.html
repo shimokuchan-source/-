@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>集中ポモドーロ & リフレッシュタイマー</title>
+    <style>
+        :root {
+            --primary-color: #4f46e5;
+            --secondary-color: #06b6d4;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-color: #1e293b;
+            --accent-work: #ef4444;
+            --accent-break: #10b981;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background: var(--card-bg);
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            padding: 30px;
+            box-sizing: border-box;
+            text-align: center;
+        }
+
+        h1 {
+            margin-top: 0;
+            font-size: 24px;
+            color: var(--primary-color);
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 20px;
+            font-size: 18px;
+        }
+        .status-work { background-color: var(--accent-work); }
+        .status-break { background-color: var(--accent-break); }
+
+        .timer-display {
+            font-size: 72px;
+            font-weight: bold;
+            margin: 20px 0;
+            letter-spacing: 2px;
+        }
+
+        .set-info {
+            font-size: 18px;
+            margin-bottom: 20px;
+            color: #64748b;
+        }
+
+        .media-container {
+            margin: 20px 0;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #000;
+            max-height: 300px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .media-container img {
+            max-width: 100%;
+            max-height: 300px;
+            object-fit: cover;
+        }
+
+        .controls {
+            margin: 20px 0;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        button:disabled {
+            background-color: #cbd5e1;
+            cursor: not-allowed;
+        }
+
+        .settings-section {
+            margin-top: 30px;
+            text-align: left;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 20px;
+        }
+
+        .settings-section h3 {
+            margin-top: 0;
+            font-size: 16px;
+            color: #475569;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        input[type="text"], input[type="url"] {
+            width: 100%;
+            padding: 8px 12px;
+            box-sizing: border-box;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .link-display {
+            margin: 15px 0;
+            font-size: 18px;
+        }
+
+        .link-display a {
+            color: var(--secondary-color);
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .link-display a:hover {
+            text-decoration: underline;
+        }
+
+        .lock-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.9);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            display: none;
+        }
+        .lock-overlay h2 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>ポモドーロ集中タイマー</h1>
+        <div id="statusBadge" class="status-badge status-work">集中タイム (Work)</div>
+        
+        <div class="set-info" id="setInfo">セット: 1 / 最低3セット必要</div>
+        <div class="timer-display" id="timerDisplay">25:00</div>
+
+        <!-- 画像またはメディア表示エリア -->
+        <div class="media-container" id="mediaContainer">
+            <img id="displayImage" src="https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=800&auto=format&fit=crop&q=80" alt="集中画像">
+        </div>
+
+        <!-- 休憩用リンク表示エリア -->
+        <div class="link-display" id="linkDisplayArea" style="display: none;">
+            <span>おすすめリンク: </span>
+            <a id="customLink" href="#" target="_blank">休憩用ウェブサイトへ跳ぶ</a>
+        </div>
+
+        <!-- コントロールボタン -->
+        <div class="controls">
+            <button id="startBtn" onclick="startTimer()">タイマー開始</button>
+            <button id="pauseBtn" onclick="pauseTimer()" disabled>一時停止</button>
+            <button id="endSessionBtn" onclick="tryEndSession()" style="background-color: #ef4444; display: none;">セッションを終了する</button>
+        </div>
+
+        <!-- 設定セッション -->
+        <div class="settings-section">
+            <h3>カスタマイズ設定</h3>
+            <div class="form-group">
+                <label for="workImgUrl">集中タイム画像 URL:</label>
+                <input type="url" id="workImgUrl" value="https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=800&auto=format&fit=crop&q=80">
+            </div>
+            <div class="form-group">
+                <label for="breakImgUrl">休憩タイム画像 URL:</label>
+                <input type="url" id="breakImgUrl" value="https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=800&auto=format&fit=crop&q=80">
+            </div>
+            <div class="form-group">
+                <label for="linkName">休憩リンク 日本語表示名:</label>
+                <input type="text" id="linkName" value="リフレッシュ用お勧めサイトへ">
+            </div>
+            <div class="form-group">
+                <label for="linkUrl">休憩リンク URL:</label>
+                <input type="url" id="linkUrl" value="https://www.google.com">
+            </div>
+            <div class="form-group">
+                <div class="checkbox-group">
+                    <input type="checkbox" id="workMusicToggle">
+                    <label for="workMusicToggle" style="margin:0;">集中タイムにYouTube音楽を再生する</label>
+                </div>
+                <input type="text" id="workYoutubeId" placeholder="YouTube動画ID (例: dQw4w9WgXcQ)" style="margin-top:5px;">
+            </div>
+            <div class="form-group">
+                <div class="checkbox-group">
+                    <input type="checkbox" id="breakMusicToggle">
+                    <label for="breakMusicToggle" style="margin:0;">休憩タイムにYouTube音楽を再生する</label>
+                </div>
+                <input type="text" id="breakYoutubeId" placeholder="YouTube動画ID (例: dQw4w9WgXcQ)" style="margin-top:5px;">
+            </div>
+            <button onclick="saveSettings()" style="background-color: #0ea5e9; width: 100%;">設定を保存する</button>
+        </div>
+    </div>
+
+    <!-- YouTubeプレイヤー埋め込み用隠し要素 -->
+    <div id="youtubePlayer" style="display:none;"></div>
+
+    <!-- 集中タイム中の強制ロックオーバーレイ -->
+    <div class="lock-overlay" id="lockOverlay">
+        <h2>集中タイム中 (固定モード)</h2>
+        <p>他の操作や通知は制限されています。画面に集中してください。</p>
+        <div style="font-size: 48px; font-weight: bold; margin-top: 20px;" id="lockTimerDisplay">25:00</div>
+    </div>
+
+    <!-- YouTube IFrame API -->
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <script>
+        // 設定値の読み込み・保存
+        let settings = {
+            workImg: localStorage.getItem('workImg') || "https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=800&auto=format&fit=crop&q=80",
+            breakImg: localStorage.getItem('breakImg') || "https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=800&auto=format&fit=crop&q=80",
+            linkName: localStorage.getItem('linkName') || "リフレッシュ用お勧めサイトへ",
+            linkUrl: localStorage.getItem('linkUrl') || "https://www.google.com",
+            workMusic: localStorage.getItem('workMusic') === 'true',
+            workYoutubeId: localStorage.getItem('workYoutubeId') || "",
+            breakMusic: localStorage.getItem('breakMusic') === 'true',
+            breakYoutubeId: localStorage.getItem('breakYoutubeId') || ""
+        };
+
+        // フォームへの反映
+        document.getElementById('workImgUrl').value = settings.workImg;
+        document.getElementById('breakImgUrl').value = settings.breakImg;
+        document.getElementById('linkName').value = settings.linkName;
+        document.getElementById('linkUrl').value = settings.linkUrl;
+        document.getElementById('workMusicToggle').checked = settings.workMusic;
+        document.getElementById('workYoutubeId').value = settings.workYoutubeId;
+        document.getElementById('breakMusicToggle').checked = settings.breakMusic;
+        document.getElementById('breakYoutubeId').value = settings.breakYoutubeId;
+
+        function saveSettings() {
+            settings.workImg = document.getElementById('workImgUrl').value;
+            settings.breakImg = document.getElementById('breakImgUrl').value;
+            settings.linkName = document.getElementById('linkName').value;
+            settings.linkUrl = document.getElementById('linkUrl').value;
+            settings.workMusic = document.getElementById('workMusicToggle').checked;
+            settings.workYoutubeId = document.getElementById('workYoutubeId').value;
+            settings.breakMusic = document.getElementById('breakMusicToggle').checked;
+            settings.breakYoutubeId = document.getElementById('breakYoutubeId').value;
+
+            localStorage.setItem('workImg', settings.workImg);
+            localStorage.setItem('breakImg', settings.breakImg);
+            localStorage.setItem('linkName', settings.linkName);
+            localStorage.setItem('linkUrl', settings.linkUrl);
+            localStorage.setItem('workMusic', settings.workMusic);
+            localStorage.setItem('workYoutubeId', settings.workYoutubeId);
+            localStorage.setItem('breakMusic', settings.breakMusic);
+            localStorage.setItem('breakYoutubeId', settings.breakYoutubeId);
+
+            alert('設定を保存しました！');
+            updateDisplay();
+        }
+
+        // タイマー状態変数の定義
+        const WORK_TIME = 25 * 60;
+        const BREAK_TIME = 5 * 60;
+        
+        let timeLeft = WORK_TIME;
+        let isRunning = false;
+        let isWorkPhase = true; // true: Work (25m), false: Break (5m)
+        let currentSet = 1;
+        let timerInterval = null;
+        let player = null;
+
+        // YouTube API初期化
+        function onYouTubeIframeAPIReady() {
+            player = new YT.Player('youtubePlayer', {
+                height: '0',
+                width: '0',
+                videoId: '',
+                events: {
+                    'onReady': onPlayerReady
+                }
+            });
+        }
+
+        function onPlayerReady(event) {
+            // プレイヤー準備完了
+        }
+
+        function playMusic(videoId) {
+            if (player && player.loadVideoById && videoId) {
+                try {
+                    player.loadVideoById(videoId);
+                    player.playVideo();
+                } catch(e) {
+                    console.error(e);
+                }
+            }
+        }
+
+        function stopMusic() {
+            if (player && player.stopVideo) {
+                try {
+                    player.stopVideo();
+                } catch(e) {
+                    console.error(e);
+                }
+            }
+        }
+
+        function updateDisplay() {
+            const minutes = Math.floor(timeLeft / 60);
+            const seconds = timeLeft % 60;
+            const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
+            document.getElementById('timerDisplay').innerText = timeStr;
+            document.getElementById('lockTimerDisplay').innerText = timeStr;
+            document.getElementById('setInfo').innerText = `セット: ${currentSet} / 最低3セット必要`;
+
+            const badge = document.getElementById('statusBadge');
+            const img = document.getElementById('displayImage');
+            const linkArea = document.getElementById('linkDisplayArea');
+            const customLink = document.getElementById('customLink');
+
+            if (isWorkPhase) {
+                badge.innerText = "集中タイム (Work)";
+                badge.className = "status-badge status-work";
+                img.src = settings.workImg;
+                linkArea.style.display = "none";
+                document.getElementById('lockOverlay').style.display = isRunning ? "flex" : "none";
+            } else {
+                badge.innerText = "休憩タイム (Break)";
+                badge.className = "status-badge status-break";
+                img.src = settings.breakImg;
+                linkArea.style.display = "block";
+                customLink.innerText = settings.linkName;
+                customLink.href = settings.linkUrl;
+                document.getElementById('lockOverlay').style.display = "none";
+            }
+
+            // 3セット目以降で休憩ターンまたは任意のタイミングで終了ボタン表示制御
+            if (currentSet >= 3) {
+                document.getElementById('endSessionBtn').style.display = "inline-block";
+            } else {
+                document.getElementById('endSessionBtn').style.display = "none";
+            }
+        }
+
+        function startTimer() {
+            if (isRunning) return;
+            isRunning = true;
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('pauseBtn').disabled = false;
+
+            // 音楽再生処理
+            if (isWorkPhase && settings.workMusic && settings.workYoutubeId) {
+                playMusic(settings.workYoutubeId);
+            } else if (!isWorkPhase && settings.breakMusic && settings.breakYoutubeId) {
+                playMusic(settings.breakYoutubeId);
+            }
+
+            updateDisplay();
+
+            timerInterval = setInterval(() => {
+                if (timeLeft > 0) {
+                    timeLeft--;
+                    updateDisplay();
+                } else {
+                    clearInterval(timerInterval);
+                    handlePhaseComplete();
+                }
+            }, 1000);
+        }
+
+        function pauseTimer() {
+            // 集中タイム中は固定・一時停止制限（または通常一時停止可能）
+            isRunning = false;
+            clearInterval(timerInterval);
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('pauseBtn').disabled = true;
+            stopMusic();
+            document.getElementById('lockOverlay').style.display = "none";
+        }
+
+        function handlePhaseComplete() {
+            stopMusic();
+            if (isWorkPhase) {
+                // 25分終了 -> 5分休憩へ
+                isWorkPhase = false;
+                timeLeft = BREAK_TIME;
+                alert("25分の集中タイムが終了しました！5分間の休憩に入ります。");
+                startTimer(); // 自動再生
+            } else {
+                // 5分休憩終了 -> 強制的に集中タイム画面へ
+                isWorkPhase = true;
+                timeLeft = WORK_TIME;
+                currentSet++;
+                alert("休憩時間が終了しました。強制的に25分間の集中タイムを開始します！");
+                startTimer(); // 自動再生
+            }
+            updateDisplay();
+        }
+
+        function tryEndSession() {
+            if (currentSet < 3) {
+                alert("少なくとも3セット完了するまではセッションを終了できません。");
+                return;
+            }
+            if (confirm("3セット目が完了しました。セッションを終了しますか？")) {
+                pauseTimer();
+                currentSet = 1;
+                isWorkPhase = true;
+                timeLeft = WORK_TIME;
+                updateDisplay();
+                alert("お疲れ様でした！セッションが終了しました。");
+            }
+        }
+
+        // 通知ブロック・音声ミュートの疑似制御（Web Audio API等での割り込み遮断）
+        window.addEventListener('load', () => {
+            if (window.Notification && Notification.permission !== "granted") {
+                Notification.requestPermission();
+            }
+            updateDisplay();
+        });
+    </script>
+</body>
+</html>
