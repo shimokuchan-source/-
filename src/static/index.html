@@ -36,6 +36,7 @@
             padding: 30px;
             box-sizing: border-box;
             text-align: center;
+            position: relative;
         }
 
         h1 {
@@ -91,6 +92,7 @@
             display: flex;
             justify-content: center;
             gap: 15px;
+            flex-wrap: wrap;
         }
 
         button {
@@ -113,11 +115,17 @@
             cursor: not-allowed;
         }
 
+        .settings-toggle-btn {
+            background-color: #64748b;
+            margin-bottom: 15px;
+        }
+
         .settings-section {
-            margin-top: 30px;
+            margin-top: 20px;
             text-align: left;
             border-top: 1px solid #e2e8f0;
             padding-top: 20px;
+            display: none; /* 初期状態は折りたたみ */
         }
 
         .settings-section h3 {
@@ -195,7 +203,7 @@
         <div id="statusBadge" class="status-badge status-work">集中タイム (Work)</div>
         
         <div class="set-info" id="setInfo">セット: 1 / 最低3セット必要</div>
-        <div class="timer-display" id="timerDisplay">25:00</div>
+        <div class="timer-display" id="timerDisplay">00:10</div>
 
         <!-- 画像またはメディア表示エリア -->
         <div class="media-container" id="mediaContainer">
@@ -212,12 +220,13 @@
         <div class="controls">
             <button id="startBtn" onclick="startTimer()">タイマー開始</button>
             <button id="pauseBtn" onclick="pauseTimer()" disabled>一時停止</button>
+            <button class="settings-toggle-btn" onclick="toggleSettings()">⚙ 設定を開く / 変更</button>
             <button id="endSessionBtn" onclick="tryEndSession()" style="background-color: #ef4444; display: none;">セッションを終了する</button>
         </div>
 
-        <!-- 設定セッション -->
-        <div class="settings-section">
-            <h3>カスタマイズ設定</h3>
+        <!-- 設定セッション（いつでも変更可能） -->
+        <div class="settings-section" id="settingsSection">
+            <h3>カスタマイズ設定（いつでも変更可能）</h3>
             <div class="form-group">
                 <label for="workImgUrl">集中タイム画像 URL:</label>
                 <input type="url" id="workImgUrl" value="https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=800&auto=format&fit=crop&q=80">
@@ -259,7 +268,7 @@
     <div class="lock-overlay" id="lockOverlay">
         <h2>集中タイム中 (固定モード)</h2>
         <p>他の操作や通知は制限されています。画面に集中してください。</p>
-        <div style="font-size: 48px; font-weight: bold; margin-top: 20px;" id="lockTimerDisplay">25:00</div>
+        <div style="font-size: 48px; font-weight: bold; margin-top: 20px;" id="lockTimerDisplay">00:10</div>
     </div>
 
     <!-- YouTube IFrame API -->
@@ -287,6 +296,15 @@
         document.getElementById('breakMusicToggle').checked = settings.breakMusic;
         document.getElementById('breakYoutubeId').value = settings.breakYoutubeId;
 
+        function toggleSettings() {
+            const section = document.getElementById('settingsSection');
+            if (section.style.display === 'block') {
+                section.style.display = 'none';
+            } else {
+                section.style.display = 'block';
+            }
+        }
+
         function saveSettings() {
             settings.workImg = document.getElementById('workImgUrl').value;
             settings.breakImg = document.getElementById('breakImgUrl').value;
@@ -306,17 +324,17 @@
             localStorage.setItem('breakMusic', settings.breakMusic);
             localStorage.setItem('breakYoutubeId', settings.breakYoutubeId);
 
-            alert('設定を保存しました！');
+            alert('設定を更新しました！');
             updateDisplay();
         }
 
-        // タイマー状態変数の定義
-        const WORK_TIME = 25 * 60;
-        const BREAK_TIME = 5 * 60;
+        // タイマー時間の変更 (10秒＋10秒)
+        const WORK_TIME = 10;
+        const BREAK_TIME = 10;
         
         let timeLeft = WORK_TIME;
         let isRunning = false;
-        let isWorkPhase = true; // true: Work (25m), false: Break (5m)
+        let isWorkPhase = true; // true: Work (10s), false: Break (10s)
         let currentSet = 1;
         let timerInterval = null;
         let player = null;
@@ -388,7 +406,6 @@
                 document.getElementById('lockOverlay').style.display = "none";
             }
 
-            // 3セット目以降で休憩ターンまたは任意のタイミングで終了ボタン表示制御
             if (currentSet >= 3) {
                 document.getElementById('endSessionBtn').style.display = "inline-block";
             } else {
@@ -423,7 +440,6 @@
         }
 
         function pauseTimer() {
-            // 集中タイム中は固定・一時停止制限（または通常一時停止可能）
             isRunning = false;
             clearInterval(timerInterval);
             document.getElementById('startBtn').disabled = false;
@@ -435,18 +451,16 @@
         function handlePhaseComplete() {
             stopMusic();
             if (isWorkPhase) {
-                // 25分終了 -> 5分休憩へ
                 isWorkPhase = false;
                 timeLeft = BREAK_TIME;
-                alert("25分の集中タイムが終了しました！5分間の休憩に入ります。");
-                startTimer(); // 自動再生
+                alert("10秒の集中タイムが終了しました！10秒間の休憩に入ります。");
+                startTimer();
             } else {
-                // 5分休憩終了 -> 強制的に集中タイム画面へ
                 isWorkPhase = true;
                 timeLeft = WORK_TIME;
                 currentSet++;
-                alert("休憩時間が終了しました。強制的に25分間の集中タイムを開始します！");
-                startTimer(); // 自動再生
+                alert("休憩時間が終了しました。強制的に10秒間の集中タイムを開始します！");
+                startTimer();
             }
             updateDisplay();
         }
@@ -466,7 +480,6 @@
             }
         }
 
-        // 通知ブロック・音声ミュートの疑似制御（Web Audio API等での割り込み遮断）
         window.addEventListener('load', () => {
             if (window.Notification && Notification.permission !== "granted") {
                 Notification.requestPermission();
