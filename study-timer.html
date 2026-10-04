@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>集中タイマー</title>
+<style>
+  :root{
+    --bg:#0f172a; --card:#1e293b; --text:#e2e8f0; --sub:#94a3b8;
+    --study:#f97316; --break:#22c55e; --warn:#ef4444;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+    background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
+  .card{background:var(--card);border-radius:24px;padding:32px 28px;width:min(92vw,380px);text-align:center;box-shadow:0 10px 40px #0006}
+  h1{font-size:18px;margin:0 0 4px;font-weight:600}
+  .rule{color:var(--sub);font-size:12px;margin-bottom:20px}
+  .ring{position:relative;width:240px;height:240px;margin:0 auto 20px}
+  .ring svg{transform:rotate(-90deg)}
+  .ring circle{fill:none;stroke-width:14}
+  .track{stroke:#334155}
+  .bar{stroke:var(--study);stroke-linecap:round;transition:stroke .3s}
+  .center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .mode{font-size:20px;font-weight:700}
+  .time{font-size:56px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
+  .info{display:flex;justify-content:center;gap:24px;color:var(--sub);font-size:14px;margin-bottom:20px}
+  .info b{color:var(--text)}
+  button{border:0;border-radius:14px;padding:14px 28px;font-size:16px;font-weight:600;cursor:pointer;color:#fff;background:var(--study)}
+  button.ghost{background:#475569}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  .msg{min-height:20px;font-size:13px;color:var(--sub);margin-top:14px}
+  .msg.alert{color:var(--warn);font-weight:600}
+  .overlay{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;z-index:10}
+  .overlay.show{display:flex}
+  .dialog{background:var(--card);padding:28px;border-radius:20px;width:min(88vw,340px);text-align:center}
+  .dialog h2{margin:0 0 8px;font-size:20px}
+  .dialog p{color:var(--sub);margin:0 0 20px;font-size:14px}
+  .dialog .row{display:flex;gap:10px;justify-content:center}
+  body.break .bar{stroke:var(--break)}
+  body.break #start{background:var(--break)}
+  .tools{margin-top:18px;border-top:1px solid #334155;padding-top:14px;text-align:left}
+  .tools button{width:100%;padding:10px;font-size:14px;background:#475569}
+  .hint{font-size:11px;color:var(--sub);margin:6px 0 0}
+  #diag{margin-top:10px;font-size:11px;line-height:1.6;color:var(--sub);background:#0f172a;border-radius:10px;padding:10px;word-break:break-all;font-family:ui-monospace,Consolas,monospace}
+  #diag b{color:var(--text)}
+  #diag .log{margin-top:6px;white-space:pre-wrap;max-height:130px;overflow:auto;border-top:1px solid #334155;padding-top:6px}
+  .ng{color:var(--warn)} .ok{color:var(--break)}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>集中タイマー</h1>
+  <div class="rule" id="rule"></div>
+
+  <div class="ring">
+    <svg width="240" height="240" viewBox="0 0 240 240">
+      <circle class="track" cx="120" cy="120" r="106"/>
+      <circle class="bar" id="bar" cx="120" cy="120" r="106"/>
+    </svg>
+    <div class="center">
+      <div class="mode" id="mode">待機中</div>
+      <div class="time" id="time">0</div>
+    </div>
+  </div>
+
+  <div class="info">
+    <div>セット <b id="setNo">1</b></div>
+    <div>ターン <b id="turnNo">1</b> / <span id="turnMax"></span></div>
+  </div>
+
+  <button id="start">スタート</button>
+  <div class="msg" id="msg">スタートすると1セットが終わるまで止められません</div>
+
+  <div class="tools">
+    <button id="testBtn" type="button">5秒後にテスト通知</button>
+    <p class="hint">通知の切り分け用です。スタート前に押し、別タブへ移って5秒待ってください。</p>
+    <div id="diag"></div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="dialog">
+    <h2>セット完了！</h2>
+    <p>次のセットも続けますか？</p>
+    <div class="row">
+      <button id="yes">続ける</button>
+      <button id="no" class="ghost">終了</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== 設定（秒） =====
+const STUDY_SEC = 25 * 60; // 勉強（テスト時は小さな値に変更可）
+const BREAK_SEC = 5 * 60;  // 休憩
+const TURNS_PER_SET = 4;   // 1セットのターン数
+const WARN_BEFORE_SEC = 3; // 休憩終了の何秒前に通知するか
+// =====================
+
+const $ = id => document.getElementById(id);
+const bar = $('bar'), CIRC = 2 * Math.PI * 106;
+bar.style.strokeDasharray = CIRC;
+
+$('rule').textContent =
+  `勉強${Math.floor(STUDY_SEC/60)}分 + 休憩${Math.floor(BREAK_SEC/60)}分 = 1ターン ／ ${TURNS_PER_SET}ターン = 1セット`;
+$('turnMax').textContent = TURNS_PER_SET;
+
+const st = {
+  mode: 'idle',   // idle | study | break | penalty | confirm
+  set: 1, turn: 1,
+  startAt: 0, endAt: 0, dur: 0,
+  notified: false,
+};
+
+// ---- 正確なタイマー ----
+let worker;
+try {
+  const blob = new Blob(['setInterval(()=>postMessage(0),200)'], {type:'text/javascript'});
+  worker = new Worker(URL.createObjectURL(blob));
+  worker.onmessage = tick;
+} catch (e) {
+  setInterval(tick, 200);
+}
+
+// ---- 診断表示 ----
+const diag = { lastAttempt: '-', lastResult: 'まだ通知を出していません', lastTick: '-', timerKind: worker ? 'Web Worker' : 'setInterval（代替）', logs: [] };
+const hhmmss = (d = new Date()) => d.toLocaleTimeString('ja-JP', { hour12: false });
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function log(text) {
+  diag.logs.unshift(`${hhmmss()} ${text}`);
+  if (diag.logs.length > 15) diag.logs.length = 15;
+  renderDiag();
+}
+function renderDiag() {
+  const perm = 'Notification' in window ? Notification.permission : '未対応';
+  const isFile = location.protocol === 'file:';
+  const audio = actx ? actx.state : '未初期化';
+  $('diag').innerHTML =
+    `<div>URL: <b class="${isFile ? 'ng' : ''}">${esc(location.href)}</b>${isFile ? ' ← file:// です。http://localhost で開き直してください' : ''}</div>` +
+    `<div>Notification.permission: <b class="${perm === 'granted' ? 'ok' : 'ng'}">${esc(perm)}</b></div>` +
+    `<div>isSecureContext: <b class="${window.isSecureContext ? 'ok' : 'ng'}">${window.isSecureContext}</b></div>` +
+    `<div>今のタブ: <b>${esc(document.visibilityState)}</b> ／ モード: <b>${esc(st.mode)}</b></div>` +
+    `<div>タイマー方式: <b>${esc(diag.timerKind)}</b> ／ 最後のtick: <b>${esc(diag.lastTick)}</b></div>` +
+    `<div>音(AudioContext): <b class="${audio === 'running' ? 'ok' : 'ng'}">${esc(audio)}</b></div>` +
+    `<div>通知を出そうとした時刻: <b>${esc(diag.lastAttempt)}</b></div>` +
+    `<div>API結果: <b>${esc(diag.lastResult)}</b></div>` +
+    `<div class="log">${diag.logs.map(esc).join('\n') || '（ログなし）'}</div>`;
+}
+
+// ---- 音 ----
+let actx;
+function unlockAudio() {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended') actx.resume();
+  } catch (e) { log('音の初期化に失敗: ' + e.message); }
+}
+function beep(freq = 880, ms = 150) {
+  try {
+    if (!actx) return;
+    if (actx.state === 'suspended') actx.resume();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.frequency.value = freq; o.connect(g); g.connect(actx.destination);
+    g.gain.setValueAtTime(.15, actx.currentTime);
+    o.start(); o.stop(actx.currentTime + ms / 1000);
+  } catch (e) { log('音エラー: ' + e.message); }
+}
+
+// ---- 通知 ----
+function notify(title, body, source = '本体') {
+  diag.lastAttempt = `${hhmmss()}（${source}／タブ:${document.visibilityState}）`;
+  if (!('Notification' in window)) {
+    diag.lastResult = 'NG: このブラウザは Notification 未対応';
+  } else if (Notification.permission !== 'granted') {
+    diag.lastResult = `NG: 許可されていません (${Notification.permission})`;
+  } else {
+    try {
+      const n = new Notification(title, { body, tag: 'study-timer-' + Date.now(), requireInteraction: false, silent: false });
+      n.onshow = () => log('onshow: 通知を表示しました');
+      n.onerror = () => log('onerror: 通知の表示に失敗しました');
+      n.onclick = () => { window.focus(); n.close(); };
+      diag.lastResult = 'OK: API呼び出し成功';
+    } catch (e) {
+      diag.lastResult = `NG: 例外 ${e.name}: ${e.message}`;
+    }
+  }
+  log(`通知[${source}] ${diag.lastResult}`);
+  beep(1000, 250);
+}
+
+// ---- フェーズ制御 ----
+function startPhase(mode) {
+  st.mode = mode;
+  st.dur = (mode === 'study' ? STUDY_SEC : BREAK_SEC) * 1000;
+  st.startAt = Date.now();
+  st.endAt = st.startAt + st.dur;
+  st.notified = false;
+  document.body.classList.toggle('break', mode === 'break');
+  beep(mode === 'study' ? 880 : 520, 180);
+
+  render();
+}
+
+function failSet() {
+  if (st.mode === 'penalty') return; // 重複実行防止
+  st.mode = 'penalty';
+  document.body.classList.remove('break');
+  st.turn = 1; // セットの最初からやり直し
+  setMsg('勉強中にタブを離れたため、リセットされました。タブに戻ると再スタートします', true);
+  render();
+}
+
+function nextPhase() {
+  log(`${st.mode}の終了処理を実行`);
+  if (st.mode === 'study') {
+    startPhase('break');
+  } else if (st.mode === 'break') {
+    if (st.turn < TURNS_PER_SET) {
+      st.turn++;
+      startPhase('study');
+    } else {
+      finishSet();
+    }
+  }
+}
+
+function finishSet() {
+  st.mode = 'confirm';
+  document.body.classList.remove('break');
+  $('overlay').classList.add('show');
+  beep(660, 300);
+  if (document.hidden) notify('セット完了', '戻って続けるか選んでください');
+  render();
+}
+
+function tick() {
+  diag.lastTick = hhmmss();
+  if (st.mode !== 'study' && st.mode !== 'break') return;
+  const remain = st.endAt - Date.now();
+
+  if (st.mode === 'break' && document.hidden && !st.notified && remain <= WARN_BEFORE_SEC * 1000) {
+    st.notified = true;
+    const last = st.turn >= TURNS_PER_SET;
+    notify(`あと${WARN_BEFORE_SEC}秒で休憩終了`,
+           last ? 'このセットは間もなく完了です。戻ってください' : '勉強が始まります。タブに戻ってください！',
+           '本体');
+  }
+
+  if (remain <= 0) nextPhase(); else render();
+}
+
+// ---- 描画 ----
+function render() {
+  const names = { idle:'待機中', study:'勉強', break:'休憩', penalty:'リセット', confirm:'確認中' };
+  $('mode').textContent = names[st.mode];$('setNo').textContent = st.set;
+  $('turnNo').textContent = st.turn;
+
+  let remainSec = 0, ratio = 1;
+  if (st.mode === 'study' || st.mode === 'break') {
+    const remain = Math.max(0, st.endAt - Date.now());
+    remainSec = Math.ceil(remain / 1000);
+    ratio = remain / st.dur;
+  }
+  $('time').textContent = remainSec;
+  bar.style.strokeDashoffset = CIRC * (1 - ratio);
+
+  const running = st.mode !== 'idle';
+  $('start').disabled = running;
+  $('start').textContent = running ? '実行中…' : 'スタート';
+
+  if (st.mode === 'study' || st.mode === 'break') {
+    document.title = `${names[st.mode]} ${remainSec}s | 集中タイマー`;
+  } else {
+    document.title = '集中タイマー';
+  }
+}
+
+function setMsg(text, alert = false) {
+  const m = $('msg'); m.textContent = text; m.className = 'msg' + (alert ? ' alert' : '');
+}
+
+// ---- タブ切り替え監視 ----
+document.addEventListener('visibilitychange', () => {
+  log(`タブ状態: ${document.visibilityState}（モード:${st.mode}）`);
+  if (document.hidden) {
+    if (st.mode === 'study') {
+      failSet();
+    }
+  } else {
+    if (st.mode === 'penalty') {
+      setMsg('勉強中にタブを離れたので、このセットを最初からやり直します', true);
+      startPhase('study');
+    } else if (st.mode === 'study' || st.mode === 'break') {
+      setMsg('実行中：勉強中はこのタブから離れないでください');
+    }
+  }
+});
+
+// ---- 操作 ----
+$('start').addEventListener('click', async () => {
+  unlockAudio();
+  if ('Notification' in window && Notification.permission === 'default') {
+    try { log('通知の許可結果: ' + await Notification.requestPermission()); } catch (e) { log('許可要求でエラー: ' + e.message); }
+  }
+  if ('Notification' in window && Notification.permission !== 'granted') {
+    setMsg('通知が許可されていないため、休憩中の通知は届きません', true);
+  } else {
+    setMsg('実行中：勉強中はこのタブから離れないでください');
+  }
+  st.turn = 1;
+  startPhase('study');
+});
+
+$('yes').addEventListener('click', () => {$('overlay').classList.remove('show');
+  st.set++; st.turn = 1;
+  setMsg(`セット${st.set}を開始しました`);
+  startPhase('study');
+});
+
+$('no').addEventListener('click', () => {$('overlay').classList.remove('show');
+  st.mode = 'idle'; st.turn = 1;
+  setMsg(`お疲れさまでした！ ${st.set}セット完了`);
+  st.set = 1;
+  render();
+});
+
+window.addEventListener('beforeunload', e => {
+  if (st.mode !== 'idle' && st.mode !== 'confirm') { e.preventDefault(); e.returnValue = ''; }
+});
+
+let testTimer = null;
+$('testBtn').addEventListener('click', async () => {
+  unlockAudio();
+  if ('Notification' in window && Notification.permission === 'default') {
+    try { log('通知の許可結果: ' + await Notification.requestPermission()); } catch (e) { log('許可要求でエラー: ' + e.message); }
+  }
+  if (testTimer) clearTimeout(testTimer);
+  log('テスト通知を5秒後に予約しました。別タブへ移って待ってください');
+  testTimer = setTimeout(() => { testTimer = null; notify('テスト通知', '5秒前に予約した通知です', 'テスト'); }, 5000);
+});
+
+setInterval(renderDiag, 1000);
+renderDiag();
+render();
+</script>
+</body>
+</html>

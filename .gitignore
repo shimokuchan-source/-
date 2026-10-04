@@ -6,6 +6,8 @@ __pycache__/
 dist/
 build/
 .next/
+.venv2
+.venv3
 
 # 機密情報・環境変数（セキュリティ保護）
 .env

@@ -1,0 +1,276 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ポモドーロタイマー (2s/6s)</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background-color: #f0f2f5;
+      color: #333;
+    }
+    .card {
+      background: #ffffff;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      text-align: center;
+      width: 320px;
+    }
+    h1 {
+      font-size: 1.2rem;
+      margin-bottom: 1rem;
+      color: #555;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 0.4rem 1rem;
+      border-radius: 20px;
+      font-weight: bold;
+      font-size: 1.1rem;
+      margin-bottom: 1rem;
+    }
+    .status-study {
+      background-color: #ffebee;
+      color: #d32f2f;
+    }
+    .status-break {
+      background-color: #e8f5e9;
+      color: #388e3c;
+    }
+    .status-idle {
+      background-color: #eee;
+      color: #666;
+    }
+    .timer-display {
+      font-size: 4rem;
+      font-weight: bold;
+      margin: 1rem 0;
+      font-family: monospace;
+    }
+    .info {
+      font-size: 0.9rem;
+      color: #666;
+      margin-bottom: 1.5rem;
+    }
+    button {
+      background-color: #1976d2;
+      color: white;
+      border: none;
+      padding: 0.8rem 1.5rem;
+      font-size: 1rem;
+      font-weight: bold;
+      border-radius: 6px;
+      cursor: pointer;
+      width: 100%;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background-color: #1565c0;
+    }
+    button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+    .alert-msg {
+      margin-top: 1rem;
+      font-size: 0.85rem;
+      color: #d32f2f;
+      min-height: 1.2em;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h1>勉強・休憩タイマー</h1>
+    <div id="statusBadge" class="status-badge status-idle">待機中</div>
+    
+    <div class="timer-display" id="timerDisplay">0</div>
+    
+    <div class="info">
+      <div>ターン: <span id="turnDisplay">1</span> / 2</div>
+      <div>セット: <span id="setDisplay">1</span></div>
+    </div>
+
+    <button id="startBtn">スタート</button>
+    <div id="alertMsg" class="alert-msg"></div>
+  </div>
+
+  <script>
+    // 定数設定 (秒)
+    const STUDY_TIME = 2;
+    const BREAK_TIME = 6;
+    const TURNS_PER_SET = 2;
+    const NOTIFY_BEFORE_SECONDS = 3;
+
+    // 状態変数
+    let currentSet = 1;
+    let currentTurn = 1;
+    let currentMode = 'IDLE'; // 'STUDY', 'BREAK', 'IDLE'
+    let timeLeft = 0;
+    let timerInterval = null;
+    let hasNotified = false;
+
+    // DOM要素
+    const statusBadge = document.getElementById('statusBadge');
+    const timerDisplay = document.getElementById('timerDisplay');
+    const turnDisplay = document.getElementById('turnDisplay');
+    const setDisplay = document.getElementById('setDisplay');
+    const startBtn = document.getElementById('startBtn');
+    const alertMsg = document.getElementById('alertMsg');
+
+    // 通知権限の要求
+    function requestNotificationPermission() {
+      if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+        Notification.requestPermission();
+      }
+    }
+
+    // スタートボタン押下
+    startBtn.addEventListener('click', () => {
+      requestNotificationPermission();
+      startBtn.disabled = true; // 1セット完了までボタン操作不可（強制実行）
+      alertMsg.textContent = '';
+      startSet();
+    });
+
+    // セット開始
+    function startSet() {
+      currentTurn = 1;
+      startTurn();
+    }
+
+    // ターン開始
+    function startTurn() {
+      updateUI();
+      startStudyPhase();
+    }
+
+    // 勉強モード開始
+    function startStudyPhase() {
+      currentMode = 'STUDY';
+      timeLeft = STUDY_TIME;
+      hasNotified = false;
+      updateUI();
+      runTimer(onStudyEnd);
+    }
+
+    // 勉強モード終了時
+    function onStudyEnd() {
+      startBreakPhase();
+    }
+
+    // 休憩モード開始
+    function startBreakPhase() {
+      currentMode = 'BREAK';
+      timeLeft = BREAK_TIME;
+      hasNotified = false;
+      updateUI();
+      runTimer(onBreakEnd);
+    }
+
+    // 休憩モード終了時
+    function onBreakEnd() {
+      if (currentTurn < TURNS_PER_SET) {
+        currentTurn++;
+        startTurn();
+      } else {
+        // 1セット完了
+        completeSet();
+      }
+    }
+
+    // タイマー実行ループ
+    function runTimer(onComplete) {
+      clearInterval(timerInterval);
+      timerDisplay.textContent = timeLeft;
+
+      timerInterval = setInterval(() => {
+        timeLeft--;
+        timerDisplay.textContent = timeLeft;
+
+        // 休憩モード時、別タブにいて勉強開始3秒前になったら通知
+        if (currentMode === 'BREAK' && !hasNotified && timeLeft === NOTIFY_BEFORE_SECONDS) {
+          if (document.hidden) {
+            sendNotification('まもなく勉強モード開始', `あと${NOTIFY_BEFORE_SECONDS}秒で勉強モードが始まります！`);
+          }
+          hasNotified = true;
+        }
+
+        if (timeLeft <= 0) {
+          clearInterval(timerInterval);
+          onComplete();
+        }
+      }, 1000);
+    }
+
+    // 1セット完了時の処理
+    function completeSet() {
+      currentMode = 'IDLE';
+      updateUI();
+      
+      // 継続確認ダイアログ
+      setTimeout(() => {
+        const continueTimer = confirm(`第 ${currentSet} セットが完了しました。\n次のセット（第 ${currentSet + 1} セット）を開始しますか？`);
+        if (continueTimer) {
+          currentSet++;
+          startSet();
+        } else {
+          startBtn.disabled = false;
+          alertMsg.textContent = 'タイマーが停止しました。';
+        }
+      }, 100);
+    }
+
+    // 勉強モード中にタブが離脱（非アクティブ）になった場合の検出
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && currentMode === 'STUDY') {
+        // タイマー停止＆セットリセット
+        clearInterval(timerInterval);
+        alertMsg.textContent = `勉強中に別タブへ移動したため、第 ${currentSet} セットをやり直します。`;
+        
+        // 少し置いてセットの最初から再スタート
+        setTimeout(() => {
+          startSet();
+        }, 1000);
+      }
+    });
+
+    // デスクトップ通知の送信
+    function sendNotification(title, body) {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification(title, { body, icon: 'https://fav.farm/⏱️' });
+      }
+    }
+
+    // UI更新
+    function updateUI() {
+      setDisplay.textContent = currentSet;
+      turnDisplay.textContent = currentTurn;
+
+      if (currentMode === 'STUDY') {
+        statusBadge.textContent = '勉強モード';
+        statusBadge.className = 'status-badge status-study';
+      } else if (currentMode === 'BREAK') {
+        statusBadge.textContent = '休憩モード';
+        statusBadge.className = 'status-badge status-break';
+      } else {
+        statusBadge.textContent = '待機中';
+        statusBadge.className = 'status-badge status-idle';
+        timerDisplay.textContent = '0';
+      }
+    }
+  </script>
+</body>
+</html>
