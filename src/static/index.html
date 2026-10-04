@@ -40,6 +40,15 @@
       font-size: 16px;
       cursor: pointer;
     }
+    .jump-link {
+      margin-top: 15px;
+      display: none;
+    }
+    .jump-link a {
+      color: #ffcc00;
+      font-size: 16px;
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
@@ -63,6 +72,12 @@
   <div class="timer-display" id="timeDisplay">15</div>
   
   <button id="startBtn">スタート</button>
+
+  <!-- 休憩モード時のみ表示するジャンププラスへのリンク -->
+  <div id="jumpContainer" class="jump-link">
+    <p>休憩中のお供に！</p>
+    <a href="https://shonenjumpplus.com/" target="_blank">少年ジャンプ＋を開く</a>
+  </div>
 </div>
 
 <script>
@@ -81,6 +96,7 @@
   const timeDisplay = document.getElementById('timeDisplay');
   const modeLabel = document.getElementById('modeLabel');
   const startBtn = document.getElementById('startBtn');
+  const jumpContainer = document.getElementById('jumpContainer');
 
   // 通知許可を求める
   if (window.Notification && Notification.permission !== 'granted') {
@@ -147,6 +163,13 @@
     timeDisplay.textContent = timeLeft;
     modeLabel.textContent = currentMode === 'study' ? '勉強' : '休憩';
     updateBackground();
+
+    // 休憩モードの時のみジャンププラスのリンクを表示
+    if (currentMode === 'break') {
+      jumpContainer.style.display = 'block';
+    } else {
+      jumpContainer.style.display = 'none';
+    }
   }
 
   // モード切り替え
@@ -165,11 +188,10 @@
   // タイマー処理
   function tick() {
     if (timeLeft > 0) {
-      // 残り3秒になった瞬間に通知（勉強時間・休憩時間どちらでも対応、今回は特に「勉強時間の3秒前」および一般対応）
       if (timeLeft === 3) {
         const modeName = currentMode === 'study' ? '勉強時間' : '休憩時間';
         showNotification('タイマー通知', `${modeName}が残り3秒になりました！`);
-        playAlarm(); // 3秒前にも軽く音を鳴らすと分かりやすい
+        playAlarm();
       }
       timeLeft--;
       timeDisplay.textContent = timeLeft;
