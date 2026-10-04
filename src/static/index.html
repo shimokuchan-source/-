@@ -82,6 +82,39 @@
   const modeLabel = document.getElementById('modeLabel');
   const startBtn = document.getElementById('startBtn');
 
+  // 通知許可を求める
+  if (window.Notification && Notification.permission !== 'granted') {
+    Notification.requestPermission();
+  }
+
+  // アラーム音（Web Audio API）再生関数
+  function playAlarm() {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+      gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + 0.5);
+    } catch (e) {
+      console.log('AudioContext not supported or blocked', e);
+    }
+  }
+
+  // ブラウザ通知送信関数
+  function showNotification(title, body) {
+    if (window.Notification && Notification.permission === 'granted') {
+      new Notification(title, { body: body });
+    }
+  }
+
   // 画像アップロードのイベントリスナー
   document.getElementById('studyBgInput').addEventListener('change', (e) => {
     const file = e.target.files[0];
@@ -125,12 +158,19 @@
       currentMode = 'study';
       timeLeft = STUDY_TIME;
     }
+    playAlarm();
     updateDisplay();
   }
 
   // タイマー処理
   function tick() {
     if (timeLeft > 0) {
+      // 残り3秒になった瞬間に通知（勉強時間・休憩時間どちらでも対応、今回は特に「勉強時間の3秒前」および一般対応）
+      if (timeLeft === 3) {
+        const modeName = currentMode === 'study' ? '勉強時間' : '休憩時間';
+        showNotification('タイマー通知', `${modeName}が残り3秒になりました！`);
+        playAlarm(); // 3秒前にも軽く音を鳴らすと分かりやすい
+      }
       timeLeft--;
       timeDisplay.textContent = timeLeft;
     } else {
@@ -145,6 +185,7 @@
       timerId = null;
       startBtn.textContent = 'スタート';
     } else {
+      playAlarm();
       timerId = setInterval(tick, 1000);
       startBtn.textContent = '一時停止';
     }
